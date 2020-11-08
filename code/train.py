@@ -1,0 +1,146 @@
+import sys
+import pickle
+import matplotlib.pyplot as plt
+import numpy as np
+import bz2
+import tensorflow
+
+# import models
+import models.vanilla_model as vanilla
+import gc
+import re
+import os
+#os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+# user options
+model_name = 'vanilla'
+use_adam = True
+learning_rates = [0.00001]
+decay_rate = 0
+decay_epochs = 50
+momentum = 0.9
+batch_sizes = [16]
+epochs = 300
+plot = True
+train = False
+predict = True
+use_data_size = 64; # possible options [64, 128, 256]
+
+params = {}
+params['resetHistory']  = False
+params['print_summary'] = True
+params['dropout'] = 0.5
+params['data_aug_enable'] = False
+params['models_dir'] = None
+
+# data files
+data_in_dir = "../data"
+train_data_file = data_in_dir + "/train_" + str(use_data_size) + "_data.bz2"
+dev_data_file = data_in_dir + "/dev_" + str(use_data_size) + "_data.bz2"
+test_data_file = data_in_dir + "/test_" + str(use_data_size) + "_data.bz2"
+
+def load_data_from_file(fname, dname):
+    if re.match(".*.bz2", fname):
+        fin = bz2.BZ2File(fname, 'rb')
+        try:
+            print("Reading data from file %s" % (fname))
+            data0, data1, data2 = pickle.load(fin)
+        finally:
+            fin.close()
+    else:
+        print("Reading data from file %s" % (fname))
+        with open(fname, 'rb') as fin:
+            data0, data1, data2  = pickle.load(fin)
+
+    print ("%s shape: %s" %(dname, data0.shape))
+    print("%s shape: %s" %(dname, data1.shape))
+    print("%s shape: %s" % (dname, data2.shape))
+    return data0, data1, data2
+
+
+# LossHistory Class
+class LossHistory(tensorflow.keras.callbacks.Callback):
+    def __init__(self):
+        self.train_losses = []
+        self.val_losses = []
+        self.train_acc = []
+        self.val_acc = []
+        self.acc_epochs = 0
+        super(LossHistory, self).__init__()
+
+    def on_epoch_end(self, epoch, logs={}):
+        self.train_losses.append(logs.get('loss'))
+        self.train_acc.append(logs.get('accuracy'))
+        self.val_losses.append(logs.get('val_loss'))
+        self.val_acc.append(logs.get('val_accuracy'))
+        gc.collect()
+        if epoch%5 == 0:
+            # Save model
+            print ("Saving the model in ../experiments/current/m_" + str(epoch))
+            model.save('../experiments/current/m_' + str(epoch))
+
+# learning rate scheduler
+def lr_scheduler(epoch, lr):
+    global decay_rate, decay_epochs
+    if epoch%decay_epochs == 0 and epoch and decay_rate != 0:
+        return lr * decay_rate
+    return lr
+
+## Define the model
+x_train, y_train, c_train = load_data_from_file(train_data_file, "train")
+x_dev, y_dev, c_dev = load_data_from_file(dev_data_file, "dev")
+
+# reshape
+x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], x_train.shape[2], 1))
+x_dev = np.reshape(x_dev, (x_dev.shape[0], x_dev.shape[1], x_dev.shape[2], 1))
+
+for batch_size in batch_sizes:
+    for lr in learning_rates:
+        if not params['models_dir']:
+            params['models_dir'] = f'../experiments/{model_name}/{batch_size}.{lr}'
+        history = LossHistory()
+        if model_name == 'vanilla':
+            model = vanilla.Model(history, params)
+        else:
+            model = None
+            exit("Something went wrong, model not defined")
+
+        if not train:
+            model.is_train = False
+
+        ## training
+        if use_adam:
+            optimizer = tensorflow.keras.optimizers.Adam(lr=lr)
+        else:
+            optimizer = tensorflow.keras.optimizers.SGD(lr=lr, momentum=momentum)
+
+        model.compile(optimizer)
+
+        #Load data into model
+        model.x_train = x_train
+        model.y_train = y_train
+        model.x_val = x_dev
+        model.y_val = y_dev
+        print (model.x_train.dtype)
+        print (model.x_val.dtype)
+
+        # instantiate model
+        if train:
+            model.train(batch_size, epochs, lr_scheduler)
+            model.save()
+
+        if plot:
+            fig, ax = plt.subplots(nrows=1, ncols=2)
+            model.train_plot(fig, ax, show_plot=False)
+
+        if predict:
+            y_hat = model.predict(x_dev, batch_size)
+            n = y_dev.shape[0]
+            y_err = y_hat != y_dev.reshape(n,1)
+            acc = (n - np.sum(y_err))*100/n
+            print ("Accuracy on dev set is %.2f" %(acc))
+
+if plot or train:
+    plt.legend()
+    plt.show()
+
