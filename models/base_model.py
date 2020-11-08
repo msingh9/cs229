@@ -98,15 +98,15 @@ class BaseModel:
         self.model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
 
     def train(self, batch_size, epochs, lr_scheduler):
+        if self.x_train.dtype == np.uint8:
+            norm_const = np.array(255).astype('float16')
+            self.x_train = self.x_train / norm_const
+
+        if self.x_val.dtype == np.uint8:
+            norm_const = np.array(255).astype('float16')
+            self.x_val = self.x_val / norm_const
+
         if self.params['data_aug_enable']:
-            if self.x_train.dtype == np.uint8:
-                norm_const = np.array(255).astype('float16')
-                self.x_train = self.x_train / norm_const
-
-            if self.x_val.dtype == np.uint8:
-                norm_const = np.array(255).astype('float16')
-                self.x_val = self.x_val / norm_const
-
             self.datagen = ImageDataGenerator(rotation_range = 40, width_shift_range=0.3, height_shift_range=0.3)
             self.model.fit_generator(self.datagen.flow(self.x_train, self.y_train, batch_size=batch_size),
                                      steps_per_epoch=len(self.x_train)/batch_size,
@@ -117,14 +117,6 @@ class BaseModel:
             return
 
         # default
-        if self.x_train.dtype == np.uint8:
-            norm_const = np.array(255).astype('float16')
-            self.x_train = self.x_train / norm_const
-
-        if self.x_val.dtype == np.uint8:
-            norm_const = np.array(255).astype('float16')
-            self.x_val = self.x_val / norm_const
-
         self.model.fit(self.x_train, self.y_train, batch_size=batch_size, epochs=epochs,
                            validation_data=(self.x_val, self.y_val),
                            callbacks = [self.history,
@@ -158,5 +150,8 @@ class BaseModel:
             plt.show()
 
     # over write predict method
-    def predict(self, x, batchsize):
+    def my_predict(self, x, batchsize):
+        if x.dtype == np.uint8:
+            norm_const = np.array(255).astype('float16')
+            x = x / norm_const
         return self.model.predict(x, batchsize)

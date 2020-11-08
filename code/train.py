@@ -20,7 +20,7 @@ decay_rate = 0
 decay_epochs = 50
 momentum = 0.9
 batch_sizes = [16]
-epochs = 300
+epochs = 10
 plot = True
 train = False
 predict = True
@@ -31,7 +31,7 @@ params['resetHistory']  = False
 params['print_summary'] = True
 params['dropout'] = 0.5
 params['data_aug_enable'] = False
-params['models_dir'] = None
+params['models_dir'] = '../trained_models/vanilla'
 
 # data files
 data_in_dir = "../data"
@@ -87,16 +87,18 @@ def lr_scheduler(epoch, lr):
     return lr
 
 ## Define the model
-x_train, y_train, c_train = load_data_from_file(train_data_file, "train")
+if train:
+    x_train, y_train, c_train = load_data_from_file(train_data_file, "train")
 x_dev, y_dev, c_dev = load_data_from_file(dev_data_file, "dev")
 
 # reshape
-x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], x_train.shape[2], 1))
+if train:
+    x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], x_train.shape[2], 1))
 x_dev = np.reshape(x_dev, (x_dev.shape[0], x_dev.shape[1], x_dev.shape[2], 1))
 
 for batch_size in batch_sizes:
     for lr in learning_rates:
-        if not params['models_dir']:
+        if train or 'models_dir' not in params:
             params['models_dir'] = f'../experiments/{model_name}/{batch_size}.{lr}'
         history = LossHistory()
         if model_name == 'vanilla':
@@ -117,11 +119,13 @@ for batch_size in batch_sizes:
         model.compile(optimizer)
 
         #Load data into model
-        model.x_train = x_train
-        model.y_train = y_train
+        if train:
+            model.x_train = x_train
+            model.y_train = y_train
+            print(model.x_train.dtype)
+
         model.x_val = x_dev
         model.y_val = y_dev
-        print (model.x_train.dtype)
         print (model.x_val.dtype)
 
         # instantiate model
@@ -134,9 +138,10 @@ for batch_size in batch_sizes:
             model.train_plot(fig, ax, show_plot=False)
 
         if predict:
-            y_hat = model.predict(x_dev, batch_size)
+            y_hat = model.my_predict(x_dev, batch_size)
+            y_pred = y_hat > model.params['y_hat_threshold']
             n = y_dev.shape[0]
-            y_err = y_hat != y_dev.reshape(n,1)
+            y_err = y_pred != y_dev.reshape(n,1)
             acc = (n - np.sum(y_err))*100/n
             print ("Accuracy on dev set is %.2f" %(acc))
 
