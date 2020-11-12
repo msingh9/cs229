@@ -37,7 +37,7 @@ class BaseModel:
         self.params['print_summary'] = True
         self.params['y_hat_threshold'] = 0.5
 
-        self.patience = 8
+        self.patience = 16
         self.is_train = True
         self.all_plot = False
 
@@ -107,13 +107,15 @@ class BaseModel:
             self.x_val = self.x_val / norm_const
 
         if self.params['data_aug_enable']:
-            self.datagen = ImageDataGenerator(rotation_range = 40, width_shift_range=0.3, height_shift_range=0.3)
+            print ("USING DATA AUGMENTATION")
+            #self.datagen = ImageDataGenerator(rotation_range = 40, width_shift_range=0.3, height_shift_range=0.3, horizontal_flip=True, vertical_flip=True)
+            self.datagen = ImageDataGenerator(horizontal_flip=True, vertical_flip=True)
             self.model.fit_generator(self.datagen.flow(self.x_train, self.y_train, batch_size=batch_size),
                                      steps_per_epoch=len(self.x_train)/batch_size,
                                      epochs=epochs, validation_data=(self.x_val, self.y_val),
                                      callbacks=[self.history,
                                                 tf.keras.callbacks.LearningRateScheduler(lr_scheduler, verbose=1),
-                                                tf.keras.callbacks.EarlyStopping(monitor='val_acc', patience=self.patience)])
+                                                tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=self.patience)])
             return
 
         # default
@@ -121,7 +123,7 @@ class BaseModel:
                            validation_data=(self.x_val, self.y_val),
                            callbacks = [self.history,
                                         tf.keras.callbacks.LearningRateScheduler(lr_scheduler, verbose=1),
-                                        tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=self.patience)])
+                                        tf.keras.callbacks.EarlyStopping(monitor='val_accuracy', patience=self.patience)])
 
     def train_plot(self, fig=None, ax=None, show_plot=True, label=None):
         if not label:
@@ -145,6 +147,10 @@ class BaseModel:
         print('train_acc: ' + str(self.history.train_acc[-5:-1]))
         print('val_acc: ' + str(self.history.val_acc[-5:-1]))
         print('epochs:   ' + str(len(self.history.train_losses)))
+
+        plot_file_name = self.fname + "_plot.png"
+        print (f"Saving plot in {plot_file_name}")
+        plt.savefig(plot_file_name)
 
         if show_plot:
             plt.show()
