@@ -6,37 +6,55 @@ import bz2
 import tensorflow
 
 # import models
-import models.vanilla_model as vanilla
+import models.model1 as model1
+import models.model2 as model2
+import models.model3 as model3
+import models.model4 as model4
+import models.model5 as model5
+import models.model6 as model6
+import models.model7 as model7
+
 import gc
 import re
 import os
 #os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 # user options
-model_name = 'vanilla'
+model_name = 'model1'
 use_adam = True
-learning_rates = [0.00001]
+learning_rates = [0.000001]
 decay_rate = 0
 decay_epochs = 50
 momentum = 0.9
 batch_sizes = [16]
-epochs = 10
+epochs = 300
 plot = True
 train = False
 predict = True
-use_data_size = 64; # possible options [64, 128, 256]
+
+if model_name == 'model7':
+    use_data_size = 256; # possible options [64, 128, 256]
+else:
+    use_data_size = 64
 
 params = {}
 params['resetHistory']  = False
 params['print_summary'] = True
 params['dropout'] = 0.5
 params['data_aug_enable'] = False
-params['models_dir'] = '../trained_models/vanilla'
+params['models_dir'] = '../trained_models/' + model_name
+#params['models_dir'] = '../trained_models/model3_hv'
+
+if model_name == 'model7':
+    params['poisson'] = True
+else:
+    params['poisson'] = False
 
 # data files
 data_in_dir = "../data"
 train_data_file = data_in_dir + "/train_" + str(use_data_size) + "_data.bz2"
 dev_data_file = data_in_dir + "/dev_" + str(use_data_size) + "_data.bz2"
+#dev_data_file = data_in_dir + "/test_" + str(use_data_size) + "_data.bz2"
 test_data_file = data_in_dir + "/test_" + str(use_data_size) + "_data.bz2"
 
 def load_data_from_file(fname, dname):
@@ -69,10 +87,16 @@ class LossHistory(tensorflow.keras.callbacks.Callback):
         super(LossHistory, self).__init__()
 
     def on_epoch_end(self, epoch, logs={}):
-        self.train_losses.append(logs.get('loss'))
-        self.train_acc.append(logs.get('accuracy'))
-        self.val_losses.append(logs.get('val_loss'))
-        self.val_acc.append(logs.get('val_accuracy'))
+        if 'poisson' in params and params['poisson']:
+            self.train_losses.append(logs.get('loss'))
+            self.train_acc.append(logs.get('mean_squared_error'))
+            self.val_losses.append(logs.get('val_loss'))
+            self.val_acc.append(logs.get('val_mean_squared_error'))
+        else:
+            self.train_losses.append(logs.get('loss'))
+            self.train_acc.append(logs.get('accuracy'))
+            self.val_losses.append(logs.get('val_loss'))
+            self.val_acc.append(logs.get('val_accuracy'))
         gc.collect()
         if epoch%5 == 0:
             # Save model
@@ -87,13 +111,15 @@ def lr_scheduler(epoch, lr):
     return lr
 
 ## Define the model
-if train:
-    x_train, y_train, c_train = load_data_from_file(train_data_file, "train")
+x_train, y_train, c_train = load_data_from_file(train_data_file, "train")
 x_dev, y_dev, c_dev = load_data_from_file(dev_data_file, "dev")
 
+if 'poisson' in params and params['poisson']:
+    y_train = c_train
+    y_dev = c_dev
+
 # reshape
-if train:
-    x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], x_train.shape[2], 1))
+x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], x_train.shape[2], 1))
 x_dev = np.reshape(x_dev, (x_dev.shape[0], x_dev.shape[1], x_dev.shape[2], 1))
 
 for batch_size in batch_sizes:
@@ -101,8 +127,20 @@ for batch_size in batch_sizes:
         if train or 'models_dir' not in params:
             params['models_dir'] = f'../experiments/{model_name}/{batch_size}.{lr}'
         history = LossHistory()
-        if model_name == 'vanilla':
-            model = vanilla.Model(history, params)
+        if model_name == 'model1':
+            model = model1.Model(history, params)
+        elif model_name == 'model2':
+            model = model2.Model(history, params)
+        elif model_name == 'model3':
+            model = model3.Model(history, params)
+        elif model_name == 'model4':
+            model = model4.Model(history, params)
+        elif model_name == 'model5':
+            model = model5.Model(history, params)
+        elif model_name == 'model6':
+            model = model6.Model(history, params)
+        elif model_name == 'model7':
+            model = model7.Model(history, params)
         else:
             model = None
             exit("Something went wrong, model not defined")
@@ -139,13 +177,26 @@ for batch_size in batch_sizes:
 
         if predict:
             y_hat = model.my_predict(x_dev, batch_size)
-            y_pred = y_hat > model.params['y_hat_threshold']
-            n = y_dev.shape[0]
-            y_err = y_pred != y_dev.reshape(n,1)
-            acc = (n - np.sum(y_err))*100/n
-            print ("Accuracy on dev set is %.2f" %(acc))
+            if 'poisson' in params and params['poisson']:
+                n = y_dev.shape[0]
+                mse = np.square(y_hat-y_dev.reshape(n, 1)).mean(axis=None)
+                print("Average MSE on dev set is %.2f" % (mse))
+                print (y_dev.shape, y_hat.shape)
+                print (np.max(y_dev))
+                print(np.max(y_hat))
+                plt.figure()
+                plt.plot(y_dev, y_hat, 'bx', Linewidth=2)
+                plt.xlabel('real count')
+                plt.ylabel('predicted count')
+            else:
+                y_pred = y_hat > model.params['y_hat_threshold']
+                n = y_dev.shape[0]
+                y_err = y_pred != y_dev.reshape(n, 1)
+                acc = (n - np.sum(y_err)) * 100 / n
+                print (y_pred)
+                print("Accuracy on dev set is %.2f" % (acc))
+
 
 if plot or train:
-    plt.legend()
     plt.show()
 

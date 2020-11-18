@@ -9,7 +9,7 @@ from tensorflow.keras import backend
 
 class Model(BaseModel):
     def __init__(self, history, params=None):
-        self.name = 'vanilla'
+        self.name = 'model3'
         self.model = Sequential()
 
         # 64x64

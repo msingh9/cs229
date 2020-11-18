@@ -13,9 +13,9 @@ import csv
 augmentation = False
 write_train = True
 write_test = True
-random.seed(10000000)
+np.random.seed(10000000)
 in_resolution = (1536, 1103)
-patch_size = (256,256) ; # (row,col)
+patch_size = (64,64) ; # (row,col)
 patch_stride = (16,16)
 ann2pixels = (15.11, 21.04)
 num_classes = 1
@@ -135,7 +135,7 @@ print (f"Positive samples # = {npos} {pp}")
 print (f"Negative samples # = {nneg} {nn}")
 
 # count histogram
-max_count = np.max(C)
+max_count = np.max(c_all)
 print (f"max_count of faults is {max_count}")
 #CountHistogram = []
 #for i in range(max_count):
@@ -144,7 +144,7 @@ print (f"max_count of faults is {max_count}")
 # plot histogram of count
 if debug > 1:
     fix, ax = plt.subplots(1)
-    ax.hist(C, bins=max_count)
+    ax.hist(c_all, bins=max_count)
     plt.show()
 
 ## Re-shuffle, split and save
@@ -183,5 +183,21 @@ for ttt in ("test", "train", "dev"):
     else:
         exit("Something went wrong")
 
+# Randomly select 50 images from test set for manual annotation
+if not os.path.isdir(data_out_dir + "/test_images"):
+    os.makedirs(data_out_dir + "/test_images")
+indices = np.random.choice(50, size=50, replace=False)
+i = 0
+for index in indices:
+    plt.imsave(data_out_dir + "/test_images/image" + str(i) + ".png", x_test[index], cmap='gray')
+    i += 1
+
+x_man_test = x_test[indices]
+y_man_test = y_test[indices]
+c_man_test = c_test[indices]
+fname = data_out_dir + "/man_test"  + "_" + str(patch_size[0]) + "_data.bz2"
+fout = bz2.BZ2File(fname, 'wb')
+print(f"Dumping man_test data into {fname}")
+pickle.dump((x_man_test, y_man_test, c_man_test), fout, protocol=4)
 
 

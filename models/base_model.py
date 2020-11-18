@@ -37,7 +37,7 @@ class BaseModel:
         self.params['print_summary'] = True
         self.params['y_hat_threshold'] = 0.5
 
-        self.patience = 16
+        self.patience = 200
         self.is_train = True
         self.all_plot = False
 
@@ -71,7 +71,10 @@ class BaseModel:
         print (self.name)
         if not self.params['resetHistory'] and os.path.isfile(self.name + '.h5'):
             print("Loading model from " + self.name + '.h5')
-            self.model = load_model(self.name + '.h5')
+            if self.params['poisson']:
+                self.model = load_model(self.name + '.h5', custom_objects={'exp': tf.math.exp})
+            else:
+                self.model = load_model(self.name + '.h5')
             if self.history:
                 with open(self.name + '.aux_data', 'rb') as fin:
                     self.history.train_losses, self.history.val_losses, self.history.train_acc, self.history.val_acc = pickle.load(fin)
@@ -95,7 +98,10 @@ class BaseModel:
             plot_model(self.model, to_file=self.name + '.png')
 
     def compile(self, optimizer):
-        self.model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+        if 'poisson' in self.params and self.params['poisson']:
+            self.model.compile(optimizer=optimizer, loss='mse', metrics=[tf.keras.metrics.MeanSquaredError()])
+        else:
+            self.model.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
 
     def train(self, batch_size, epochs, lr_scheduler):
         if self.x_train.dtype == np.uint8:
@@ -129,26 +135,37 @@ class BaseModel:
         if not label:
             label = self.name
         if not fig:
-            fig, ax = plt.subplots(nrows=1, ncols=2)
-        ax[0].plot(self.history.train_losses[self.history.acc_epochs:], label=label + ' train', color='red')
-        ax[0].plot(self.history.val_losses[self.history.acc_epochs:], label=label +' val', color='blue')
-        ax[0].set_ylabel('Loss')
-        ax[0].set_xlabel('epocs')
-        ax[0].set_title("Loss vs epocs, train(Red)")
+            if 'poisson' in self.params and self.params['poisson']:
+                fig, ax = plt.subplots(nrows=1, ncols=1)
+            else:
+                fig, ax = plt.subplots(nrows=1, ncols=2)
 
-        ax[1].plot(self.history.train_acc[self.history.acc_epochs:], label=label + ' train', color='red')
-        ax[1].plot(self.history.val_acc[self.history.acc_epochs:], label=label + ' val', color='blue')
-        ax[1].set_ylabel('Accuracy')
-        ax[1].set_xlabel('epocs')
-        ax[1].set_title("Accuracy vs epocs, train(Red)")
+        if 'poisson' in self.params and self.params['poisson']:
+            ax[0].plot(self.history.train_losses[self.history.acc_epochs:], label=label + ' train', color='red')
+            ax[0].plot(self.history.val_losses[self.history.acc_epochs:], label=label + ' val', color='blue')
+            ax[0].set_ylabel('MSE')
+            ax[0].set_xlabel('epocs')
+            ax[0].set_title("MSE vs epocs, train(Red)")
+        else:
+            ax[0].plot(self.history.train_losses[self.history.acc_epochs:], label=label + ' train', color='red')
+            ax[0].plot(self.history.val_losses[self.history.acc_epochs:], label=label +' val', color='blue')
+            ax[0].set_ylabel('Loss')
+            ax[0].set_xlabel('epocs')
+            ax[0].set_title("Loss vs epocs, train(Red)")
 
-        print('train_loss: ' + str(self.history.train_losses[-5:-1]))
-        print('val_loss: ' + str(self.history.val_losses[-5:-1]))
-        print('train_acc: ' + str(self.history.train_acc[-5:-1]))
-        print('val_acc: ' + str(self.history.val_acc[-5:-1]))
-        print('epochs:   ' + str(len(self.history.train_losses)))
+            ax[1].plot(self.history.train_acc[self.history.acc_epochs:], label=label + ' train', color='red')
+            ax[1].plot(self.history.val_acc[self.history.acc_epochs:], label=label + ' val', color='blue')
+            ax[1].set_ylabel('Accuracy')
+            ax[1].set_xlabel('epocs')
+            ax[1].set_title("Accuracy vs epocs, train(Red)")
 
-        plot_file_name = self.fname + "_plot.png"
+            print('train_loss: ' + str(self.history.train_losses[-5:-1]))
+            print('val_loss: ' + str(self.history.val_losses[-5:-1]))
+            print('train_acc: ' + str(self.history.train_acc[-5:-1]))
+            print('val_acc: ' + str(self.history.val_acc[-5:-1]))
+            print('epochs:   ' + str(len(self.history.train_losses)))
+
+        plot_file_name = self.name + "_plot.png"
         print (f"Saving plot in {plot_file_name}")
         plt.savefig(plot_file_name)
 
